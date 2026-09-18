@@ -3,20 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node server.js",
+    "import": "node scripts/import-xlsm.js",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.js",
     "lint": "eslint"
   },
   "dependencies": {
+    "@univerjs/preset-sheets-core": "^0.25.1",
+    "@univerjs/preset-sheets-drawing": "^0.25.1",
+    "@univerjs/preset-sheets-note": "^0.25.1",
+    "@univerjs/presets": "^0.25.1",
     "next": "16.3.5",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "ws": "^8.21.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "typescript": "^5"
