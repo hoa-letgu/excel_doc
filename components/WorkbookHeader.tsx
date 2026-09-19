@@ -28,9 +28,25 @@ const paths = {
   history: <><path d="M3 12a9 9 0 1 0 3-6.7" /><polyline points="3 4 3 9 8 9" /><polyline points="12 7 12 12 16 14" /></>,
   lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
   trash: <><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>,
+  database: <><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></>,
+  link: <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>,
 };
 
 type Snapshot = { id: number; createdAt: number };
+
+const snapshotDateFormatter = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+function formatSnapshotTime(createdAt: number) {
+  return snapshotDateFormatter.format(new Date(createdAt * 1000));
+}
 
 function ToolbarButton({ icon, label, onClick, href, disabled }: { icon: ReactNode; label?: string; onClick?: () => void; href?: string; disabled?: boolean }) {
   const content = (
@@ -353,6 +369,8 @@ export default function WorkbookHeader({
         <ToolbarButton icon={paths.save} label="Save" onClick={handleSaveNow} />
         <ToolbarButton icon={paths.download} label="Download" href={`/api/workbooks/${workbookId}/download`} />
         {role === 'admin' && <ToolbarButton icon={paths.lock} label="Phân quyền" onClick={() => setShowAdmin(true)} />}
+        {role === 'admin' && <ToolbarButton icon={paths.database} label="Database" href="/database" />}
+        {role === 'admin' && <ToolbarButton icon={paths.link} label="Liên kết" href="/workbook-links" />}
         <span style={{ position: 'relative' }}>
           <ToolbarButton icon={paths.history} label="Lịch sử" onClick={toggleHistory} />
           {showHistory && (
@@ -376,7 +394,7 @@ export default function WorkbookHeader({
               {snapshots.length === 0 && <div style={{ padding: 10, color: '#999' }}>Chưa có bản lưu nào (lưu mỗi giờ).</div>}
               {snapshots.map((s) => (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #f0f0f0' }}>
-                  <span style={{ flex: 1 }}>{new Date(s.createdAt * 1000).toLocaleString('vi-VN')}</span>
+                  <span style={{ flex: 1 }}>{formatSnapshotTime(s.createdAt)}</span>
                   <a href={`/api/workbooks/${workbookId}/history/${s.id}/download`} title="Tải xuống" style={{ color: '#555' }}>
                     <Icon>{paths.download}</Icon>
                   </a>

@@ -1,0 +1,14 @@
+(node:43244) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+⚠ Slow filesystem detected. The benchmark took 363ms. If \\?\D:\sample sheet\.next\dev is a network drive, consider moving it to a local folder.
+See more: https://nextjs.org/docs/app/guides/local-development
+[browser] Uncaught Error: [Engine]: cannot subscribe to rect changes when container is not set!
+    at updateCursorOverlays (components/SpreadsheetEditor.tsx:231:35)
+    at SpreadsheetEditor.useEffect.init (components/SpreadsheetEditor.tsx:393:13)
+  229 |                 })
+  230 |               );
+> 231 |               const popup = range.attachRangePopup({
+      |                                   ^
+  232 |                 componentKey: RemoteCursorLabel,
+  233 |                 extraProps: { color, label: `${user.username} · ${user.ip}` },
+  234 |                 direction: 'top-center',

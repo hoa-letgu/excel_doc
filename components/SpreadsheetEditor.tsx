@@ -11,6 +11,12 @@ import '@univerjs/preset-sheets-note/lib/index.css';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
 import UniverPresetSheetsDrawingViVN from '@univerjs/preset-sheets-drawing/locales/vi-VN';
 import '@univerjs/preset-sheets-drawing/lib/index.css';
+import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
+import UniverPresetSheetsFilterViVN from '@univerjs/preset-sheets-filter/locales/vi-VN';
+import '@univerjs/preset-sheets-filter/lib/index.css';
+import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
+import UniverPresetSheetsSortViVN from '@univerjs/preset-sheets-sort/locales/vi-VN';
+import '@univerjs/preset-sheets-sort/lib/index.css';
 import type { FUniver } from '@univerjs/presets';
 import { CommandType } from '@univerjs/core';
 import { COMMAND_LISTENER_SKELETON_CHANGE, COMMAND_LISTENER_VALUE_CHANGE, SetFrozenMutation } from '@univerjs/sheets';
@@ -52,6 +58,10 @@ const STRUCTURAL_MUTATION_IDS = new Set<string>([
   RemoveNoteMutation.id,
   UpdateNotePositionMutation.id,
   SetDrawingApplyMutation.id,
+  'sheet.mutation.set-filter-range',
+  'sheet.mutation.set-filter-criteria',
+  'sheet.mutation.remove-filter',
+  'sheet.mutation.re-calc-filter',
 ]);
 STRUCTURAL_MUTATION_IDS.delete('sheet.mutation.set-range-values'); // handled by SheetValueChanged already
 STRUCTURAL_MUTATION_IDS.delete('sheet.mutation.set-worksheet-row-auto-height'); // each client recomputes this locally from its own font/zoom
@@ -155,8 +165,22 @@ export default function SpreadsheetEditor({
 
         const { univerAPI } = createUniver({
           locale: LocaleType.VI_VN,
-          locales: { [LocaleType.VI_VN]: mergeLocales(UniverPresetSheetsCoreViVN, UniverPresetSheetsNoteViVN, UniverPresetSheetsDrawingViVN) },
-          presets: [UniverSheetsCorePreset({ container: containerRef.current! }), UniverSheetsNotePreset(), UniverSheetsDrawingPreset()],
+          locales: {
+            [LocaleType.VI_VN]: mergeLocales(
+              UniverPresetSheetsCoreViVN,
+              UniverPresetSheetsNoteViVN,
+              UniverPresetSheetsDrawingViVN,
+              UniverPresetSheetsFilterViVN,
+              UniverPresetSheetsSortViVN
+            ),
+          },
+          presets: [
+            UniverSheetsCorePreset({ container: containerRef.current! }),
+            UniverSheetsNotePreset(),
+            UniverSheetsDrawingPreset(),
+            UniverSheetsFilterPreset(),
+            UniverSheetsSortPreset(),
+          ],
         });
         univerAPIRef.current = univerAPI;
         univerAPI.createWorkbook(snapshot);
@@ -310,6 +334,10 @@ export default function SpreadsheetEditor({
           // array, keyed one level deeper: { [sheetId]: { data, order } }.
           const drawingResource = saved?.resources?.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
           const drawingsBySheet = drawingResource ? JSON.parse(drawingResource.data || '{}') : {};
+          // AutoFilter (per-column filter state) — same workbook-level resources
+          // array, keyed one level deeper: { [sheetId]: IAutoFilter }.
+          const filterResource = saved?.resources?.find((r) => r.name === 'SHEET_FILTER_PLUGIN');
+          const filtersBySheet = filterResource ? JSON.parse(filterResource.data || '{}') : {};
           const config = {
             mergeData: sheetData.mergeData ?? [],
             freeze: sheetData.freeze,
@@ -319,6 +347,7 @@ export default function SpreadsheetEditor({
             columnCount: sheetData.columnCount,
             notes: notesBySheet[sheetId] ?? {},
             drawings: drawingsBySheet[sheetId] ?? { data: {}, order: [] },
+            filter: filtersBySheet[sheetId],
           };
           onSaving?.(true);
           if (needsCellResync) {

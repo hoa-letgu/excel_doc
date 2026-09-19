@@ -60,6 +60,7 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoFocus
+          suppressHydrationWarning
           style={inputStyle}
           onFocus={(e) => (e.currentTarget.style.borderColor = '#4a7dfc')}
           onBlur={(e) => (e.currentTarget.style.borderColor = '#ddd')}
@@ -69,6 +70,7 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
           placeholder="Mật khẩu"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          suppressHydrationWarning
           style={inputStyle}
           onFocus={(e) => (e.currentTarget.style.borderColor = '#4a7dfc')}
           onBlur={(e) => (e.currentTarget.style.borderColor = '#ddd')}

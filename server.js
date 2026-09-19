@@ -23,6 +23,9 @@ const {
   listSnapshots,
   getSnapshot,
   pruneSnapshots,
+  clearSnapshots,
+  getDatabaseStats,
+  optimizeDatabase,
   restoreSnapshot,
   listUsers,
   setWorkbookPermission,
@@ -31,6 +34,13 @@ const {
   effectiveSheetLevel,
   listAccessibleWorkbooks,
   getPermissionsForWorkbook,
+  getAllSheetsForAdmin,
+  createWorkbookLink,
+  deleteWorkbookLink,
+  listWorkbookLinks,
+  listAllWorkbookLinks,
+  applyWorkbookLinksForEdit,
+  syncWorkbookLink,
   setWorkbookShareToken,
   getShareToken,
   getWorkbookByShareToken,
@@ -47,6 +57,8 @@ const {
   clearCookie,
   hashPassword,
   createUser,
+  setUserPassword,
+  deleteUser,
 } = require('./lib/auth');
 
 function currentUser(req) {
@@ -348,6 +360,64 @@ app.prepare().then(() => {
       return;
     }
 
+    const userPasswordMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/password$/);
+    if (userPasswordMatch && req.method === 'POST') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        return res.writeHead(400).end();
+      }
+      const password = body.password || '';
+      if (!password) return res.writeHead(400).end();
+      setUserPassword(Number(userPasswordMatch[1]), hashPassword(password));
+      res.end();
+      return;
+    }
+
+    const userDeleteMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
+    if (userDeleteMatch && req.method === 'DELETE') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      const targetId = Number(userDeleteMatch[1]);
+      if (targetId === user.id) return res.writeHead(400).end(); // can't delete your own logged-in account
+      deleteUser(targetId);
+      res.end();
+      return;
+    }
+
+    if (url.pathname === '/api/admin/database' && req.method === 'GET') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(getDatabaseStats()));
+      return;
+    }
+
+    if (url.pathname === '/api/admin/database/clear-snapshots' && req.method === 'POST') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      clearSnapshots();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(getDatabaseStats()));
+      return;
+    }
+
+    if (url.pathname === '/api/admin/database/optimize' && req.method === 'POST') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(optimizeDatabase()));
+      return;
+    }
+
     const adminPermsMatch = url.pathname.match(/^\/api\/admin\/workbooks\/(\d+)\/permissions$/);
     if (adminPermsMatch && req.method === 'GET') {
       const user = currentUser(req);
@@ -356,7 +426,85 @@ app.prepare().then(() => {
       const workbookId = Number(adminPermsMatch[1]);
       const sheets = getSheets(workbookId).map((s) => ({ id: s.id, name: s.name }));
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ users: listUsers(), sheets, shareToken: getShareToken(workbookId), ...getPermissionsForWorkbook(workbookId) }));
+      res.end(
+        JSON.stringify({
+          users: listUsers(),
+          sheets,
+          allWorkbooks: listWorkbooks(),
+          allSheets: getAllSheetsForAdmin(),
+          workbookLinks: listWorkbookLinks(workbookId),
+          shareToken: getShareToken(workbookId),
+          ...getPermissionsForWorkbook(workbookId),
+        })
+      );
+      return;
+    }
+
+    // Standalone link-management popup — all links across every workbook,
+    // independent of any "selected workbook" (unlike the scoped list inside
+    // GET /api/admin/workbooks/:id/permissions above).
+    if (url.pathname === '/api/admin/workbook-links' && req.method === 'GET') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          allWorkbooks: listWorkbooks(),
+          allSheets: getAllSheetsForAdmin(),
+          links: listAllWorkbookLinks(),
+        })
+      );
+      return;
+    }
+
+    if (url.pathname === '/api/admin/workbook-links' && req.method === 'POST') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        return res.writeHead(400).end();
+      }
+      const link = {
+        leftWorkbookId: Number(body.leftWorkbookId),
+        leftSheetId: body.leftSheetId,
+        leftKeyCol: Number(body.leftKeyCol),
+        leftValueCol: Number(body.leftValueCol),
+        rightWorkbookId: Number(body.rightWorkbookId),
+        rightSheetId: body.rightSheetId,
+        rightKeyCol: Number(body.rightKeyCol),
+        rightValueCol: Number(body.rightValueCol),
+        bidirectional: !!body.bidirectional,
+      };
+      if (
+        !link.leftWorkbookId ||
+        !link.leftSheetId ||
+        !Number.isInteger(link.leftKeyCol) ||
+        !Number.isInteger(link.leftValueCol) ||
+        !link.rightWorkbookId ||
+        !link.rightSheetId ||
+        !Number.isInteger(link.rightKeyCol) ||
+        !Number.isInteger(link.rightValueCol)
+      ) {
+        return res.writeHead(400).end();
+      }
+      const id = createWorkbookLink(link);
+      broadcastLinkedUpdates(syncWorkbookLink(id), `link:${id}`);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ id }));
+      return;
+    }
+
+    const deleteLinkMatch = url.pathname.match(/^\/api\/admin\/workbook-links\/(\d+)$/);
+    if (deleteLinkMatch && req.method === 'DELETE') {
+      const user = currentUser(req);
+      if (!user) return res.writeHead(401).end();
+      if (user.role !== 'admin') return res.writeHead(403).end();
+      deleteWorkbookLink(Number(deleteLinkMatch[1]));
+      res.end();
       return;
     }
 
@@ -440,6 +588,10 @@ app.prepare().then(() => {
     return [...wss.clients].filter((c) => c.workbookId === ws.workbookId && c.readyState === c.OPEN);
   }
 
+  function roomOfWorkbook(workbookId) {
+    return [...wss.clients].filter((c) => c.workbookId === workbookId && c.readyState === c.OPEN);
+  }
+
   // Recipients in the room who can at least view this sheet — used to filter
   // every sheet-scoped broadcast so hidden data never reaches a client, not
   // just gets blocked from being edited.
@@ -448,6 +600,29 @@ app.prepare().then(() => {
       const level = effectiveSheetLevel(c.user, c.workbookId, sheetId);
       return level === 'view' || level === 'edit';
     });
+  }
+
+  function roomWithSheetAccessByWorkbook(workbookId, sheetId) {
+    return roomOfWorkbook(workbookId).filter((c) => {
+      const level = effectiveSheetLevel(c.user, workbookId, sheetId);
+      return level === 'view' || level === 'edit';
+    });
+  }
+
+  function broadcastLinkedUpdates(updates, clientId) {
+    const grouped = new Map();
+    for (const update of updates) {
+      const key = `${update.workbookId}:${update.sheetId}`;
+      if (!grouped.has(key)) grouped.set(key, { workbookId: update.workbookId, sheetId: update.sheetId, cellValue: {} });
+      const group = grouped.get(key);
+      (group.cellValue[update.row] ??= {})[update.col] = update.cellData;
+    }
+    for (const group of grouped.values()) {
+      const payload = JSON.stringify({ type: 'edit', clientId, sheetId: group.sheetId, cellValue: group.cellValue });
+      for (const client of roomWithSheetAccessByWorkbook(group.workbookId, group.sheetId)) {
+        client.send(payload);
+      }
+    }
   }
 
   function broadcastRoster(ws) {
@@ -557,6 +732,8 @@ app.prepare().then(() => {
           upsertCell(sheetId, Number(row), Number(col), JSON.stringify(cellData ?? {}), cellData?.f ?? null);
         }
       }
+
+      broadcastLinkedUpdates(applyWorkbookLinksForEdit(sheetId, cellValue), `link:${ws.workbookId}:${ws.clientId}`);
 
       const payload = JSON.stringify(msg);
       for (const client of roomWithSheetAccess(ws, sheetId)) {

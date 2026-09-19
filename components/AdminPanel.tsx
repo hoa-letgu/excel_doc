@@ -28,6 +28,7 @@ export default function AdminPanel({ workbooks, onClose }: { workbooks: Workbook
   const [workbookFilter, setWorkbookFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareOrigin, setShareOrigin] = useState('');
   const [copied, setCopied] = useState(false);
 
   const filteredWorkbooks = workbooks.filter((w) => w.name.toLowerCase().includes(workbookFilter.trim().toLowerCase()));
@@ -48,6 +49,13 @@ export default function AdminPanel({ workbooks, onClose }: { workbooks: Workbook
   useEffect(() => {
     if (selectedId != null) loadPermissions(selectedId);
   }, [selectedId]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setShareOrigin(window.location.origin);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   async function setWorkbookLevel(userId: number, level: string) {
     if (selectedId == null) return;
@@ -98,6 +106,27 @@ export default function AdminPanel({ workbooks, onClose }: { workbooks: Workbook
     setCopied(false);
   }
 
+  async function changePassword(userId: number, username: string) {
+    const password = prompt(`Mật khẩu mới cho "${username}":`);
+    if (!password) return;
+    await fetch(`/api/admin/users/${userId}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    alert('Đã đổi mật khẩu.');
+  }
+
+  async function deleteAccount(userId: number, username: string) {
+    if (!confirm(`Xóa vĩnh viễn tài khoản "${username}"? Không thể hoàn tác.`)) return;
+    const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert(`Xóa thất bại (${res.status})`);
+      return;
+    }
+    if (selectedId != null) loadPermissions(selectedId);
+  }
+
   async function removeSheetOverride(userId: number, sheetId: string) {
     await fetch('/api/admin/permissions/sheet', {
       method: 'POST',
@@ -109,7 +138,7 @@ export default function AdminPanel({ workbooks, onClose }: { workbooks: Workbook
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', width: 820, maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', width: 980, maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid #eee' }}>
           <strong style={{ fontSize: 15, color: '#222' }}>Phân quyền workbook</strong>
@@ -173,13 +202,14 @@ export default function AdminPanel({ workbooks, onClose }: { workbooks: Workbook
                 <>
                   <input
                     readOnly
-                    value={typeof window !== 'undefined' ? `${window.location.origin}/?share=${shareToken}` : ''}
+                    value={shareOrigin ? `${shareOrigin}/?share=${shareToken}` : ''}
                     style={{ ...fieldStyle, flex: 1, minWidth: 200, color: '#666' }}
                     onFocus={(e) => e.currentTarget.select()}
                   />
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/?share=${shareToken}`);
+                      if (!shareOrigin) return;
+                      navigator.clipboard.writeText(`${shareOrigin}/?share=${shareToken}`);
                       setCopied(true);
                     }}
                     style={{ ...fieldStyle, background: '#4a7dfc', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 500 }}
@@ -227,6 +257,12 @@ export default function AdminPanel({ workbooks, onClose }: { workbooks: Workbook
                       <option value="view">Xem</option>
                       <option value="edit">Sửa</option>
                     </select>
+                    <button onClick={() => changePassword(u.id, u.username)} title="Đổi mật khẩu" style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}>
+                      Đổi MK
+                    </button>
+                    <button onClick={() => deleteAccount(u.id, u.username)} title="Xóa tài khoản" style={{ background: 'none', border: 'none', color: '#c00', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}>
+                      Xóa
+                    </button>
                   </div>
                 );
               })}
