@@ -3,6 +3,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import type { RosterUser } from './SpreadsheetEditor';
 import AdminPanel from './AdminPanel';
+import WorkbookLinksPanel from './WorkbookLinksPanel';
 
 // `level` is absent for admin (whose /api/workbooks list is unfiltered, unleveled) — admin bypasses regardless.
 type Workbook = { id: number; name: string; level?: 'view' | 'edit' | null };
@@ -119,6 +120,17 @@ export default function WorkbookHeader({
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showLinks, setShowLinks] = useState(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('panel') === 'workbook-links'
+  );
+  function closeLinks() {
+    setShowLinks(false);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('panel') === 'workbook-links') {
+      url.searchParams.delete('panel');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+  }
   const current = workbooks.find((w) => w.id === workbookId);
   const canCreate = role !== 'viewer'; // New/Upload — global action, not tied to one workbook
   const canEditThisWorkbook = role === 'admin' || current?.level === 'edit';
@@ -370,7 +382,7 @@ export default function WorkbookHeader({
         <ToolbarButton icon={paths.download} label="Download" href={`/api/workbooks/${workbookId}/download`} />
         {role === 'admin' && <ToolbarButton icon={paths.lock} label="Phân quyền" onClick={() => setShowAdmin(true)} />}
         {role === 'admin' && <ToolbarButton icon={paths.database} label="Database" href="/database" />}
-        {role === 'admin' && <ToolbarButton icon={paths.link} label="Liên kết" href="/workbook-links" />}
+        {role === 'admin' && <ToolbarButton icon={paths.link} label="Liên kết" onClick={() => setShowLinks(true)} />}
         <span style={{ position: 'relative' }}>
           <ToolbarButton icon={paths.history} label="Lịch sử" onClick={toggleHistory} />
           {showHistory && (
@@ -414,6 +426,7 @@ export default function WorkbookHeader({
         </span>
       </div>
       {showAdmin && <AdminPanel workbooks={workbooks} onClose={() => setShowAdmin(false)} />}
+      {role === 'admin' && showLinks && <WorkbookLinksPanel onClose={closeLinks} />}
     </div>
   );
 }

@@ -444,11 +444,13 @@ export default function SpreadsheetEditor({
           if (!sheet) return;
           applyingRemote.current = true;
           try {
-            for (const [row, cols] of Object.entries(msg.cellValue)) {
-              for (const [col, cellData] of Object.entries(cols)) {
-                sheet.getRange(Number(row), Number(col)).setValue(cellData as never);
-              }
-            }
+            // Replay server-authorized data directly, including on read-only
+            // and inactive sheets, without local edit commands or undo entries.
+            univerAPIRef.current?.syncExecuteCommand('sheet.mutation.set-range-values', {
+              unitId: workbook!.getId(),
+              subUnitId: msg.sheetId,
+              cellValue: msg.cellValue,
+            }, { fromCollab: true, __ourSync: true });
           } finally {
             applyingRemote.current = false;
           }

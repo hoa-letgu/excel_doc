@@ -17,6 +17,8 @@ const {
   renameSheet,
   deleteSheet,
   getSheets,
+  getCells,
+  getCell,
   setSheetConfig,
   replaceSheetCells,
   saveSnapshot,
@@ -36,10 +38,12 @@ const {
   getPermissionsForWorkbook,
   getAllSheetsForAdmin,
   createWorkbookLink,
+  updateWorkbookLink,
   deleteWorkbookLink,
   listWorkbookLinks,
   listAllWorkbookLinks,
   applyWorkbookLinksForEdit,
+  applyWorkbookLinksForResync,
   syncWorkbookLink,
   setWorkbookShareToken,
   getShareToken,
@@ -458,7 +462,8 @@ app.prepare().then(() => {
       return;
     }
 
-    if (url.pathname === '/api/admin/workbook-links' && req.method === 'POST') {
+    const updateLinkMatch = url.pathname.match(/^\/api\/admin\/workbook-links\/(\d+)$/);
+    if ((url.pathname === '/api/admin/workbook-links' && req.method === 'POST') || (updateLinkMatch && req.method === 'PUT')) {
       const user = currentUser(req);
       if (!user) return res.writeHead(401).end();
       if (user.role !== 'admin') return res.writeHead(403).end();
@@ -491,7 +496,15 @@ app.prepare().then(() => {
       ) {
         return res.writeHead(400).end();
       }
-      const id = createWorkbookLink(link);
+      if (
+        [link.leftKeyCol, link.leftValueCol, link.rightKeyCol, link.rightValueCol].some(col => col < 0) ||
+        link.leftKeyCol === link.leftValueCol || link.rightKeyCol === link.rightValueCol ||
+        link.leftSheetId === link.rightSheetId ||
+        !getSheets(link.leftWorkbookId).some(sheet => sheet.id === link.leftSheetId) ||
+        !getSheets(link.rightWorkbookId).some(sheet => sheet.id === link.rightSheetId)
+      ) return res.writeHead(400).end();
+      const id = updateLinkMatch ? Number(updateLinkMatch[1]) : createWorkbookLink(link);
+      if (updateLinkMatch && !updateWorkbookLink(id, link)) return res.writeHead(404).end();
       broadcastLinkedUpdates(syncWorkbookLink(id), `link:${id}`);
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ id }));
@@ -714,7 +727,11 @@ app.prepare().then(() => {
       // insert/remove/move row or column).
       if (msg.type === 'sheet-config' || msg.type === 'sheet-resync') {
         if (effectiveSheetLevel(ws.user, ws.workbookId, msg.sheetId) !== 'edit') return;
-        if (msg.type === 'sheet-resync') replaceSheetCells(msg.sheetId, msg.cellData);
+        if (msg.type === 'sheet-resync') {
+          const previousCells = getCells(msg.sheetId);
+          replaceSheetCells(msg.sheetId, msg.cellData);
+          broadcastLinkedUpdates(applyWorkbookLinksForResync(msg.sheetId, previousCells), `link:${ws.workbookId}:${ws.clientId}`);
+        }
         setSheetConfig(msg.sheetId, JSON.stringify(msg.config || {}));
         ws.send(JSON.stringify({ type: 'ack' }));
         return;
@@ -727,18 +744,22 @@ app.prepare().then(() => {
       // Persist every changed cell, then broadcast the message as-is to everyone
       // else in the same workbook (last-write-wins; no conflict resolution
       // beyond insertion order).
+      const previousCells = [];
       for (const [row, cols] of Object.entries(cellValue)) {
         for (const [col, cellData] of Object.entries(cols)) {
+          const previous = getCell(sheetId, Number(row), Number(col));
+          if (previous) previousCells.push({ ...previous, row: Number(row), col: Number(col) });
           upsertCell(sheetId, Number(row), Number(col), JSON.stringify(cellData ?? {}), cellData?.f ?? null);
         }
       }
-
-      broadcastLinkedUpdates(applyWorkbookLinksForEdit(sheetId, cellValue), `link:${ws.workbookId}:${ws.clientId}`);
 
       const payload = JSON.stringify(msg);
       for (const client of roomWithSheetAccess(ws, sheetId)) {
         if (client !== ws) client.send(payload);
       }
+      // Send the original edit first so resolved values from a key lookup win
+      // on every client, including the editor that entered the key.
+      broadcastLinkedUpdates(applyWorkbookLinksForEdit(sheetId, cellValue, previousCells), `link:${ws.workbookId}:${ws.clientId}`);
       ws.send(JSON.stringify({ type: 'ack' }));
     });
   });
